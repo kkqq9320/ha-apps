@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -216,7 +217,7 @@ def fetch_source(repository: str, tag: str, dest: Path) -> Path:
     result = subprocess.run(
         ["git", "-c", "advice.detachedHead=false", "clone", "--depth", "1", "--branch", tag,
          f"https://github.com/{repository}.git", str(dest)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     if result.returncode != 0:
         raise SyncError(f"cannot fetch {repository} {tag}: {result.stderr.strip()}")
     return dest
