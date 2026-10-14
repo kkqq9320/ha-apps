@@ -27,6 +27,8 @@ jobs:
   # Runs the third-party linter, so it gets a read-only token and no stored git credentials.
   check:
     name: Check the release
+    # From another branch the pull request would also carry that branch's commits.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -69,6 +71,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "update/$APP-$VERSION"
           git add -A -- "$APP"
+          if git diff --cached --quiet; then
+            echo "$APP is already at $VERSION on main"
+            exit 0
+          fi
           git commit -m "$APP $VERSION"
           git push origin "update/$APP-$VERSION"
           gh pr create --title "$APP $VERSION" --base main --head "update/$APP-$VERSION" \

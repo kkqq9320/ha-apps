@@ -103,6 +103,16 @@ class UpdateWorkflowTest(unittest.TestCase):
         self.assertIn("github-actions[bot]", text)
         self.assertIn("41898282+github-actions[bot]@users.noreply.github.com", text)
 
+    def test_runs_only_from_main(self):
+        # Dispatched from another branch, the pull request would also carry that branch's commits.
+        self.assertIn("if: github.ref == 'refs/heads/main'", job_block(read(UPDATE), "check"))
+
+    def test_rerun_without_changes_stops_before_commit(self):
+        pr = job_block(read(UPDATE), "pr")
+        guard = pr.index("git diff --cached --quiet")
+        self.assertLess(pr.index('git add -A -- "$APP"'), guard)
+        self.assertLess(guard, pr.index("git commit -m"))
+
 
 class CiWorkflowTest(unittest.TestCase):
     def test_triggers_and_read_only_token(self):
@@ -123,6 +133,13 @@ class CiWorkflowTest(unittest.TestCase):
                   "frenck/action-addon-linter@v2", "path: ./${{ matrix.app }}"):
             with self.subTest(s=s):
                 self.assertIn(s, lint)
+
+    def test_list_failure_fails_the_step(self):
+        # Inside `echo "...$(...)"` a failing command is ignored; a plain assignment fails the bash -e step.
+        apps = job_block(read(CI), "apps")
+        self.assertIn("apps=$(python tools/sync_app.py list)\n", apps)
+        self.assertIn('echo "apps=$apps" >> "$GITHUB_OUTPUT"', apps)
+        self.assertNotIn('echo "apps=$(', apps)
 
 
 class PinnedActionsTest(unittest.TestCase):

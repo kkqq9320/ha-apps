@@ -46,8 +46,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      # A plain assignment fails the step when the command fails; inside echo the failure would be lost.
       - id: list
-        run: echo "apps=$(python tools/sync_app.py list)" >> "$GITHUB_OUTPUT"
+        run: |
+          apps=$(python tools/sync_app.py list)
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
 
   lint:
     name: Home Assistant app linter

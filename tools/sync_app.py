@@ -27,6 +27,9 @@ IMAGE_PREFIX = "ghcr.io/kkqq9320/"
 REQUIRED = ("config.yaml", "README.md", "DOCS.md", "CHANGELOG.md", "icon.png", "logo.png")
 SLUG_RE = r"^[a-z0-9_]+$"
 REPOSITORY_RE = r"^[\w.-]+/[\w.-]+$"
+# Block scalars, tags, anchors, aliases and reserved indicators: not readable as one-line text here.
+UNREADABLE = ("|", ">", "!", "&", "*", "%", "@", "`")
+FLOW = ("[", "{")
 PLATFORMS = ("linux/amd64", "linux/arm64")
 INDEX_TYPES = "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json"
 TIMEOUT = 30
@@ -84,33 +87,44 @@ def canonical_files(app_dir: Path) -> dict[str, bytes]:
     return files
 
 
-def _scalar(raw: str) -> str:
+def _scalar(key: str, raw: str) -> str:
     raw = raw.strip()
+    if raw.startswith(UNREADABLE):
+        raise SyncError(f"cannot read config.yaml {key!r} ({raw!r}); write it on one line, plain or quoted")
     if raw[:1] in ("'", '"'):
         quote = raw[0]
         end = raw.find(quote, 1)
         rest = raw[end + 1:] if end > 0 else ""
         if end < 0 or (rest.strip() and not rest.strip().startswith("#")) or (quote == '"' and "\\" in raw[:end]):
-            raise SyncError(f"cannot read the quoted value {raw!r}")
+            raise SyncError(f"cannot read the quoted value of config.yaml {key!r} ({raw!r})")
         return raw[1:end]
-    return raw.split(" #", 1)[0].strip()
+    return re.split(r"\s#", raw, maxsplit=1)[0].strip()
 
 
 def config_values(text: str) -> dict[str, str]:
-    """Top-level `key: value` lines of config.yaml, unquoted; keys that open a block are skipped."""
+    """Top-level one-line `key: value` scalars of config.yaml, unquoted; mappings, lists and flow collections are skipped."""
     values: dict[str, str] = {}
+    last_scalar = None
     for line in text.splitlines():
-        if not line.strip() or line[0] in " \t#":
+        if not line.strip() or line.startswith("#"):
+            continue
+        if line[0] in " \t":
+            if last_scalar and not line.lstrip().startswith("#"):
+                raise SyncError(f"config.yaml {last_scalar!r} continues on the next line; write it on one line")
             continue
         key, sep, raw = line.partition(":")
         if not sep:
             raise SyncError(f"cannot read the config line {line!r}")
-        value = _scalar(raw)
-        if not value:
+        last_scalar = None
+        if raw.strip().startswith(FLOW):
             continue
+        value = _scalar(key, raw)
+        if not value:
+            continue  # a mapping or a list follows on the next lines
         if key in values:
             raise SyncError(f"config.yaml sets {key!r} twice")
         values[key] = value
+        last_scalar = key
     return values
 
 
@@ -163,8 +177,9 @@ def _fetch(request: urllib.request.Request, urlopen, what: str, ref: str) -> byt
         with urlopen(request, timeout=TIMEOUT) as response:
             return response.read()
     except urllib.error.HTTPError as exc:
-        raise SyncError(f"{ref}: {what} request failed with HTTP {exc.code}; "
-                        "the image is private or missing") from exc
+        exc.close()  # the error is also the response; an open one holds the connection
+        guess = "; the image is private or missing" if exc.code in (401, 403, 404) else ""
+        raise SyncError(f"{ref}: {what} request failed with HTTP {exc.code}{guess}") from exc
     except urllib.error.URLError as exc:
         raise SyncError(f"{ref}: {what} request failed: {exc.reason}") from exc
 
@@ -249,6 +264,8 @@ def _check(repo: Path, apps: dict[str, AppSource], args: argparse.Namespace) -> 
             if not config.is_file():
                 raise SyncError(f"{slug}: missing config.yaml")
             version = config_values(config.read_bytes().decode("utf-8")).get("version", "")
+            if not re.fullmatch(VERSION_RE, version, re.ASCII):
+                raise SyncError(f"{slug}: config.yaml version {version!r} is not a calendar version <YY>.<M>.<N>")
             files = _source_files(apps[slug], slug, version, args.source)
             check_source(slug, version, files)
             differences = tree_differences(target, files)

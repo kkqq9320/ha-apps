@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location("sync_app", ROOT / "tools" / "sync_app.py")
@@ -200,6 +201,33 @@ class CheckImageTest(unittest.TestCase):
         with self.assertRaises(m.SyncError):
             m.check_image("docker.io/kkqq9320/mttl_w01", "26.10.0", opener())
 
+    def test_check_image_guesses_private_only_for_client_errors(self):
+        with self.assertRaises(m.SyncError) as cm:
+            m.check_image("ghcr.io/kkqq9320/mttl_w01", "26.10.0", opener(manifest=(503, {})))
+        self.assertIn("503", str(cm.exception))
+        self.assertNotIn("private", str(cm.exception))
+        with self.assertRaises(m.SyncError) as cm:
+            m.check_image("ghcr.io/kkqq9320/mttl_w01", "26.10.0", opener(manifest=(404, {})))
+        self.assertIn("private or missing", str(cm.exception))
+
+
+class ConfigValuesTest(unittest.TestCase):
+    def test_config_values_rejects_values_it_cannot_read(self):
+        for text in ("name: >-\n  LG U+\n", "name: |\n  X\n", "name: !!str X\n", "name: &a X\n",
+                     "name: *a\n", "name: @x\n", "name: %x\n", "name: `x`\n"):
+            with self.subTest(text=text), self.assertRaises(m.SyncError) as cm:
+                m.config_values(text)
+            self.assertIn("name", str(cm.exception))
+
+    def test_config_values_rejects_plain_value_on_two_lines(self):
+        with self.assertRaises(m.SyncError) as cm:
+            m.config_values('image: ghcr.io/kkqq9320\n  /mttl_w01\nversion: "26.10.0"\n')
+        self.assertIn("image", str(cm.exception))
+
+    def test_config_values_reads_tab_comment_and_skips_flow_collections(self):
+        values = m.config_values("arch: [amd64, aarch64]\nmap: {a: 1}\nversion: 26.10.0\t# first\n")
+        self.assertEqual(values, {"version": "26.10.0"})
+
 
 class CommandTest(unittest.TestCase):
     def setUp(self):
@@ -260,6 +288,22 @@ class CommandTest(unittest.TestCase):
         rc, _, err = run_main("--repo", self.repo, "check", "--source", self.src, "--skip-image")
         self.assertEqual(rc, 1)
         self.assertIn("--app", err)
+
+    def test_check_command_validates_version_before_fetching(self):
+        (self.repo / "mttl_w01").mkdir()
+        (self.repo / "mttl_w01" / "config.yaml").write_bytes(b"name: X\nslug: mttl_w01\n")
+        calls = []
+
+        def fake_fetch(*args):
+            calls.append(args)
+            raise m.SyncError("fetched")
+
+        with mock.patch.object(m, "fetch_source", fake_fetch):
+            rc, _, err = run_main("--repo", self.repo, "check", "--skip-image")
+        self.assertEqual(rc, 1)
+        self.assertEqual(calls, [])
+        self.assertIn("version", err)
+        self.assertNotIn("fetched", err)
 
     def test_list_command(self):
         self.assertEqual(run_main("--repo", self.repo, "list")[1].strip(), "[]")
