@@ -37,6 +37,7 @@ gh workflow run update-app.yml -f app=mttl_w01 -f version=<판>
 - `tools/`, `tests/`의 Python은 표준 라이브러리만 쓴다.
 - 줄바꿈은 LF다. `.gitattributes`가 정한다.
 - 도구 출력은 영어로 쓴다. 사용자 문서는 영어 `README.md`와 한국어 `README.ko.md` 짝이다. 이 파일은 관리자용이므로 한국어로 쓴다.
+- 한국어 사용자 문서는 "-습니다"체로 쓴다. 투오님은 한국어로 처음에 "네이버 HA 카페 투오님", 영어로 "투오 of the Naver HA Cafe"라고 쓰고 "Tuo"로 옮기지 않는다. `tests/test_repo.py`가 README 짝을 검사한다.
 
 ## 시험
 

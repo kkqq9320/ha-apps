@@ -12,12 +12,12 @@ Open [this link](https://my.home-assistant.io/redirect/supervisor_add_addon_repo
 
 | App | Description | Repository |
 |---|---|---|
-| LG U+ Multitap (MTTL-W01) | Runs Tuo's standalone backend so LG U+ MTTL-W01 power strips connect to Home Assistant on your own network | [kkqq9320/ha-lgu-mttl-w01](https://github.com/kkqq9320/ha-lgu-mttl-w01) |
+| LG U+ Multitap (MTTL-W01) | Controls LG U+ MTTL-W01 power strips from Home Assistant on your own network, without the LG U+ cloud | [kkqq9320/ha-lgu-mttl-w01](https://github.com/kkqq9320/ha-lgu-mttl-w01) |
 
 ## Credits and licenses
 
 Each app's image is built in the app's repository. The sources of its files and their licenses are listed in that repository's `NOTICE.md`, for example [NOTICE.md of ha-lgu-mttl-w01](https://github.com/kkqq9320/ha-lgu-mttl-w01/blob/main/NOTICE.md).
 
-LG U+ Multitap (MTTL-W01) runs and redistributes Tuo's standalone backend, PC tool and Android setup app, and its dashboard adapts the layout of [af950833's dashboard](https://github.com/af950833/mttl_w01).
+LG U+ Multitap (MTTL-W01) runs and redistributes the standalone backend, PC tool and Android setup app made by 투오 of the [Naver HA Cafe](https://cafe.naver.com/koreassistant/24088), and its dashboard adapts the layout of [af950833's dashboard](https://github.com/af950833/mttl_w01).
 
 The README files, tools and workflows of this repository are under the [MIT License](LICENSE). The files in each app folder are copies from the app's repository and follow its licenses.

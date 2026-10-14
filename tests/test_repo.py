@@ -48,10 +48,23 @@ class RepoTest(unittest.TestCase):
 
     def test_readme_credits_tuo_and_af950833(self):
         # The spec wants both credits visible in this README as well as in the app's own documents.
-        for name, s in (("README.md", "Tuo"), ("README.md", "af950833"),
-                        ("README.ko.md", "투오"), ("README.ko.md", "af950833")):
+        for name, s in (("README.md", "투오 of the Naver HA Cafe"), ("README.md", "af950833"),
+                        ("README.ko.md", "네이버 HA 카페 투오님"), ("README.ko.md", "af950833")):
             with self.subTest(file=name, s=s):
-                self.assertIn(s, read(name))
+                # Compare the text a reader sees: link labels without their targets.
+                self.assertIn(s, re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", read(name)))
+
+    def test_tuo_is_named_in_hangul(self):
+        # 투오님's name is not "Tuo" in English either.
+        for name in ("README.md", "README.ko.md"):
+            with self.subTest(file=name):
+                self.assertNotRegex(read(name), r"\bTuo\b")
+
+    def test_korean_readme_uses_polite_style(self):
+        # Korean sentences end in -니다 (습니다체), not the plain -다.
+        for number, line in enumerate(read("README.ko.md").splitlines(), 1):
+            with self.subTest(line=number):
+                self.assertNotRegex(line, r"[가-힣](?<!니)다(?:[.)]|\s*\||\s*$)")
 
     def test_claude_md_points_to_agents_md(self):
         self.assertEqual(read("CLAUDE.md"), "@AGENTS.md\n")
