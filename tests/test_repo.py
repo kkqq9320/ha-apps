@@ -46,6 +46,13 @@ class RepoTest(unittest.TestCase):
         self.assertTrue(heading_levels(en))
         self.assertEqual(heading_levels(en), heading_levels(ko))
 
+    def test_readme_credits_tuo_and_af950833(self):
+        # The spec wants both credits visible in this README as well as in the app's own documents.
+        for name, s in (("README.md", "Tuo"), ("README.md", "af950833"),
+                        ("README.ko.md", "투오"), ("README.ko.md", "af950833")):
+            with self.subTest(file=name, s=s):
+                self.assertIn(s, read(name))
+
     def test_claude_md_points_to_agents_md(self):
         self.assertEqual(read("CLAUDE.md"), "@AGENTS.md\n")
         self.assertTrue((ROOT / "AGENTS.md").is_file())

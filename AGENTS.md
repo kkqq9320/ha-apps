@@ -17,6 +17,7 @@ gh workflow run update-app.yml -f app=mttl_w01 -f version=<판>
 ```
 
 - `update-app.yml`은 `apps.json` 확인, 개발 저장소 태그 `v<판>`의 정본 파일 확인(`version`, `slug`, `image`), GHCR 이미지를 익명으로 받을 수 있는지와 `linux/amd64`·`linux/arm64`가 모두 있는지, 앱 설정 검사기를 거친 뒤 가지 `update/<슬러그>-<판>`에 커밋하고 PR을 연다.
+- 검사 작업(`check`)은 읽기 전용 토큰으로 돌고, PR 작업(`pr`)만 쓰기 권한을 받는다. PR 작업은 GitHub의 `actions/*`만 쓰고 앱 폴더를 릴리스에서 다시 만든다. 외부 검사기 액션이 쓰기 토큰에 닿지 않게 하려는 것이다. 이 구분을 유지한다.
 - `GITHUB_TOKEN`으로 연 PR에서는 다른 workflow가 돌지 않는다. 그래서 검사를 `update-app.yml` 안에서 한다. 병합하면 `main` push로 `ci.yml`이 다시 돈다.
 - PR의 바뀐 파일이 앱 폴더의 정본 파일뿐인지 확인하고 병합한다. 병합이 곧 배포다. Home Assistant는 이 저장소의 기본 가지를 읽는다.
 - 저장소 설정에서 "Allow GitHub Actions to create and approve pull requests"를 켜 두어야 PR이 열린다.

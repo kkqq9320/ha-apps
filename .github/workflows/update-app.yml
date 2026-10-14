@@ -17,18 +17,21 @@ on:
         type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+env:
+  APP: ${{ inputs.app }}
+  VERSION: ${{ inputs.version }}
 
 jobs:
-  update:
-    name: Update the app folder
+  # Runs the third-party linter, so it gets a read-only token and no stored git credentials.
+  check:
+    name: Check the release
     runs-on: ubuntu-latest
-    env:
-      APP: ${{ inputs.app }}
-      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -38,11 +41,30 @@ jobs:
       - uses: frenck/action-addon-linter@v2
         with:
           path: ./${{ inputs.app }}
-      - name: Open a pull request
+
+  # Can push, so it uses GitHub's own actions only and builds the folder from the release again.
+  pr:
+    name: Open a pull request
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Copy the release's canonical files
+        run: python tools/sync_app.py update "$APP" "$VERSION" --skip-image
+      - name: Commit and open the pull request
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           repository=$(python -c 'import json, sys; print(json.load(open("apps.json"))[sys.argv[1]]["repository"])' "$APP")
+          gh auth setup-git
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "update/$APP-$VERSION"

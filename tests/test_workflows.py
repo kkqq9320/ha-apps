@@ -52,8 +52,28 @@ class UpdateWorkflowTest(unittest.TestCase):
 
     def test_permissions(self):
         text = read(UPDATE)
-        self.assertIn("permissions:\n  contents: write\n  pull-requests: write\n", text)
+        self.assertIn("permissions:\n  contents: read\n", text)
+        pr = job_block(text, "pr")
+        self.assertIn("contents: write", pr)
+        self.assertIn("pull-requests: write", pr)
         self.assertNotIn("packages: write", text)
+
+    def test_write_token_never_meets_third_party_actions(self):
+        # The linter is a third-party Docker action; a job that can push to main must not run it.
+        text = read(UPDATE)
+        check, pr = job_block(text, "check"), job_block(text, "pr")
+        self.assertIn('python tools/sync_app.py update "$APP" "$VERSION"', check)
+        self.assertIn("frenck/action-addon-linter@v2", check)
+        self.assertNotIn("contents: write", check)
+        self.assertNotIn("pull-requests: write", check)
+        self.assertIn("needs: check", pr)
+        for ref in USES.findall(pr):
+            with self.subTest(ref=ref):
+                self.assertTrue(ref.startswith("actions/"), ref)
+        # The pull request job rebuilds the folder from the release itself instead of taking files from `check`.
+        self.assertIn('python tools/sync_app.py update "$APP" "$VERSION" --skip-image', pr)
+        self.assertIn("gh auth setup-git", pr)
+        self.assertEqual(text.count("actions/checkout@"), text.count("persist-credentials: false"))
 
     def test_inputs_reach_the_shell_only_through_env(self):
         text = read(UPDATE)

@@ -18,4 +18,6 @@ Open [this link](https://my.home-assistant.io/redirect/supervisor_add_addon_repo
 
 Each app's image is built in the app's repository. The sources of its files and their licenses are listed in that repository's `NOTICE.md`, for example [NOTICE.md of ha-lgu-mttl-w01](https://github.com/kkqq9320/ha-lgu-mttl-w01/blob/main/NOTICE.md).
 
+LG U+ Multitap (MTTL-W01) runs and redistributes Tuo's standalone backend, PC tool and Android setup app, and its dashboard adapts the layout of [af950833's dashboard](https://github.com/af950833/mttl_w01).
+
 The README files, tools and workflows of this repository are under the [MIT License](LICENSE). The files in each app folder are copies from the app's repository and follow its licenses.

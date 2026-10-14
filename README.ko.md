@@ -18,4 +18,6 @@ kkqq9320이 만든 Home Assistant 앱(애드온) 모음이다. 앱은 미리 빌
 
 앱마다 이미지는 앱 저장소에서 빌드한다. 파일의 출처와 라이선스는 그 저장소의 `NOTICE.md`에 있다. 예: [ha-lgu-mttl-w01의 NOTICE.md](https://github.com/kkqq9320/ha-lgu-mttl-w01/blob/main/NOTICE.md).
 
+LG U+ Multitap (MTTL-W01)은 투오의 standalone 백엔드, PC 도구, 안드로이드 설정 앱을 실행하고 다시 배포하며, 대시보드는 [af950833 대시보드](https://github.com/af950833/mttl_w01)의 배치를 가져와 고쳐 썼다.
+
 이 저장소의 README, 도구, workflow는 [MIT 라이선스](LICENSE)를 따른다. 앱 폴더의 파일은 앱 저장소에서 복사한 것이며 그 저장소의 라이선스를 따른다.
