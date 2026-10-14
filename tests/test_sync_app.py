@@ -1,9 +1,12 @@
+import contextlib
 import importlib.util
+import io
 import json
 import shutil
 import sys
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +120,151 @@ class SyncAppTest(unittest.TestCase):
                 path.write_text(json.dumps(data), encoding="utf-8")
                 with self.assertRaises(m.SyncError):
                     m.load_apps(path)
+
+
+INDEX = {"mediaType": "application/vnd.oci.image.index.v1+json",
+         "manifests": [{"platform": {"os": "linux", "architecture": "amd64"}},
+                       {"platform": {"os": "unknown", "architecture": "unknown"}},
+                       {"platform": {"os": "linux", "architecture": "arm64"}}]}
+TOKEN_URL = "https://ghcr.io/token?scope=repository:kkqq9320/mttl_w01:pull&service=ghcr.io"
+MANIFEST_URL = "https://ghcr.io/v2/kkqq9320/mttl_w01/manifests/26.10.0"
+
+
+class FakeResponse(io.BytesIO):
+    status = 200
+
+
+class FakeOpener:
+    """Answers each URL with a fixed (status, body) and records the requests it got."""
+
+    def __init__(self, routes):
+        self.routes = routes
+        self.requests = []
+
+    def __call__(self, request, timeout=None):
+        self.requests.append(request)
+        status, body = self.routes[request.full_url]
+        data = json.dumps(body).encode() if not isinstance(body, bytes) else body
+        if status >= 400:
+            raise urllib.error.HTTPError(request.full_url, status, "error", {}, io.BytesIO(data))
+        return FakeResponse(data)
+
+
+def opener(manifest=(200, INDEX), token=(200, {"token": "t"})):
+    return FakeOpener({TOKEN_URL: token, MANIFEST_URL: manifest})
+
+
+def run_main(*args):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        rc = m.main([str(a) for a in args])
+    return rc, out.getvalue(), err.getvalue()
+
+
+class CheckImageTest(unittest.TestCase):
+    def test_check_image_accepts_index_with_both_platforms(self):
+        fake = opener()
+        m.check_image("ghcr.io/kkqq9320/mttl_w01", "26.10.0", fake)
+        token, manifest = fake.requests
+        self.assertEqual(token.full_url, TOKEN_URL)
+        self.assertIn("scope=repository:kkqq9320/mttl_w01:pull", token.full_url)
+        self.assertTrue(manifest.full_url.endswith("/v2/kkqq9320/mttl_w01/manifests/26.10.0"))
+        self.assertEqual(manifest.get_header("Authorization"), "Bearer t")
+        self.assertIn("application/vnd.oci.image.index.v1+json", manifest.get_header("Accept"))
+        self.assertIn("application/vnd.docker.distribution.manifest.list.v2+json", manifest.get_header("Accept"))
+
+    def test_check_image_rejects_missing_arm64(self):
+        index = {"manifests": [{"platform": {"os": "linux", "architecture": "amd64"}}]}
+        with self.assertRaises(m.SyncError) as cm:
+            m.check_image("ghcr.io/kkqq9320/mttl_w01", "26.10.0", opener(manifest=(200, index)))
+        self.assertIn("linux/arm64", str(cm.exception))
+
+    def test_check_image_rejects_single_manifest(self):
+        single = {"mediaType": "application/vnd.oci.image.manifest.v1+json", "layers": []}
+        with self.assertRaises(m.SyncError):
+            m.check_image("ghcr.io/kkqq9320/mttl_w01", "26.10.0", opener(manifest=(200, single)))
+        with self.assertRaises(m.SyncError):
+            m.check_image("ghcr.io/kkqq9320/mttl_w01", "26.10.0", opener(manifest=(200, b"not json")))
+
+    def test_check_image_reports_status_when_private(self):
+        for kind, fake, status in (("token", opener(token=(401, {})), "401"),
+                                   ("token", opener(token=(403, {})), "403"),
+                                   ("manifest", opener(manifest=(404, {})), "404")):
+            with self.subTest(kind=kind, status=status):
+                with self.assertRaises(m.SyncError) as cm:
+                    m.check_image("ghcr.io/kkqq9320/mttl_w01", "26.10.0", fake)
+                self.assertIn(status, str(cm.exception))
+                self.assertIn("ghcr.io/kkqq9320/mttl_w01:26.10.0", str(cm.exception))
+
+    def test_check_image_requires_ghcr(self):
+        with self.assertRaises(m.SyncError):
+            m.check_image("docker.io/kkqq9320/mttl_w01", "26.10.0", opener())
+
+
+class CommandTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.repo = self.tmp / "ha-apps"
+        self.repo.mkdir()
+        (self.repo / "apps.json").write_text(
+            json.dumps({"mttl_w01": {"repository": "kkqq9320/ha-lgu-mttl-w01", "path": "mttl_w01"}}),
+            encoding="utf-8")
+        self.src = self.tmp / "dev"
+        make_app(self.src)
+
+    def update(self, version="26.10.0"):
+        return run_main("--repo", self.repo, "update", "mttl_w01", version, "--source", self.src, "--skip-image")
+
+    def test_update_command_with_local_source(self):
+        rc, out, err = self.update()
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(m.tree_differences(self.repo / "mttl_w01", m.canonical_files(self.src / "mttl_w01")), [])
+        self.assertFalse((self.repo / "mttl_w01" / "Dockerfile").exists())
+
+    def test_update_command_rejects_unknown_app(self):
+        rc, _, err = run_main("--repo", self.repo, "update", "other", "26.10.0", "--source", self.src, "--skip-image")
+        self.assertEqual(rc, 1)
+        self.assertIn("other", err)
+
+    def test_update_command_rejects_bad_version(self):
+        for version in ("26.09.0", "26.10.1"):
+            with self.subTest(version=version):
+                rc, _, err = self.update(version)
+                self.assertEqual(rc, 1)
+                self.assertTrue(err.startswith("error: "), err)
+                self.assertFalse((self.repo / "mttl_w01").exists())
+
+    def test_check_command_detects_hand_edit(self):
+        self.assertEqual(self.update()[0], 0)
+        rc, _, err = run_main("--repo", self.repo, "check", "--app", "mttl_w01", "--source", self.src, "--skip-image")
+        self.assertEqual(rc, 0, err)
+        (self.repo / "mttl_w01" / "DOCS.md").write_bytes(b"edited by hand")
+        rc, _, err = run_main("--repo", self.repo, "check", "--app", "mttl_w01", "--source", self.src, "--skip-image")
+        self.assertEqual(rc, 1)
+        self.assertIn("changed: DOCS.md", err)
+
+    def test_check_command_rejects_folder_not_in_apps_json(self):
+        (self.repo / "other").mkdir()
+        (self.repo / "other" / "config.yaml").write_bytes(b"name: other\n")
+        rc, _, err = run_main("--repo", self.repo, "check", "--skip-image")
+        self.assertEqual(rc, 1)
+        self.assertIn("other", err)
+
+    def test_check_command_skips_listed_app_without_folder(self):
+        rc, out, err = run_main("--repo", self.repo, "check", "--skip-image")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("not released yet: mttl_w01", out)
+
+    def test_check_command_source_needs_app(self):
+        rc, _, err = run_main("--repo", self.repo, "check", "--source", self.src, "--skip-image")
+        self.assertEqual(rc, 1)
+        self.assertIn("--app", err)
+
+    def test_list_command(self):
+        self.assertEqual(run_main("--repo", self.repo, "list")[1].strip(), "[]")
+        self.update()
+        self.assertEqual(json.loads(run_main("--repo", self.repo, "list")[1]), ["mttl_w01"])
 
 
 if __name__ == "__main__":

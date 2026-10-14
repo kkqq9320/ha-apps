@@ -1,0 +1,53 @@
+name: Update app
+
+# Run by hand after an app repository publishes a release:
+#   gh workflow run update-app.yml -f app=mttl_w01 -f version=26.10.0
+# Pull requests opened with GITHUB_TOKEN do not start other workflows, so every check runs here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App slug in apps.json, for example mttl_w01
+        required: true
+        type: string
+      version:
+        description: Released version, for example 26.10.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Update the app folder
+    runs-on: ubuntu-latest
+    env:
+      APP: ${{ inputs.app }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # Checks apps.json, the version, the canonical files and the image before it writes the folder.
+      - name: Copy the release's canonical files
+        run: python tools/sync_app.py update "$APP" "$VERSION"
+      - uses: frenck/action-addon-linter@v2
+        with:
+          path: ./${{ inputs.app }}
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repository=$(python -c 'import json, sys; print(json.load(open("apps.json"))[sys.argv[1]]["repository"])' "$APP")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "update/$APP-$VERSION"
+          git add -A -- "$APP"
+          git commit -m "$APP $VERSION"
+          git push origin "update/$APP-$VERSION"
+          gh pr create --title "$APP $VERSION" --base main --head "update/$APP-$VERSION" \
+            --body "Release: https://github.com/$repository/releases/tag/v$VERSION"

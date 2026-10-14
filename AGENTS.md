@@ -8,11 +8,26 @@ kkqq9320의 Home Assistant 앱 모음 저장소다. 사용자는 이 저장소�
 - 앱 폴더는 손으로 고치지 않는다. 고칠 것이 있으면 개발 저장소에서 고쳐 새 판으로 릴리스하고, 그 판을 이 저장소로 가져온다.
 - 앱 목록 표(README)에는 판 번호를 쓰지 않는다.
 
+## 앱 갱신
+
+개발 저장소가 새 판을 릴리스한 뒤 GitHub Actions의 **Update app** workflow를 실행한다.
+
+```bash
+gh workflow run update-app.yml -f app=mttl_w01 -f version=<판>
+```
+
+- `update-app.yml`은 `apps.json` 확인, 개발 저장소 태그 `v<판>`의 정본 파일 확인(`version`, `slug`, `image`), GHCR 이미지를 익명으로 받을 수 있는지와 `linux/amd64`·`linux/arm64`가 모두 있는지, 앱 설정 검사기를 거친 뒤 가지 `update/<슬러그>-<판>`에 커밋하고 PR을 연다.
+- `GITHUB_TOKEN`으로 연 PR에서는 다른 workflow가 돌지 않는다. 그래서 검사를 `update-app.yml` 안에서 한다. 병합하면 `main` push로 `ci.yml`이 다시 돈다.
+- PR의 바뀐 파일이 앱 폴더의 정본 파일뿐인지 확인하고 병합한다. 병합이 곧 배포다. Home Assistant는 이 저장소의 기본 가지를 읽는다.
+- 저장소 설정에서 "Allow GitHub Actions to create and approve pull requests"를 켜 두어야 PR이 열린다.
+- `ci.yml`(push·PR)은 시험, 앱 폴더와 릴리스 태그 비교, 이미지 확인(`python tools/sync_app.py check`), 앱 설정 검사기를 돈다.
+- 로컬에서 네트워크 없이 확인할 때는 개발 저장소 checkout을 원본으로 쓴다: `python tools/sync_app.py --repo <사본> update mttl_w01 <판> --source <개발 저장소> --skip-image`. 실제 저장소의 앱 폴더는 workflow PR로만 바꾼다.
+
 ## 새 앱 더하기
 
-1. `apps.json`에 앱 슬러그, 개발 저장소(`<owner>/<repo>`), 앱 폴더 경로를 적는다. 폴더가 아직 없는 앱은 검사가 "아직 내지 않은 앱"으로 넘어간다.
+1. `apps.json`에 앱 슬러그, 개발 저장소(`<owner>/<repo>`), 앱 폴더 경로를 적는다. 폴더가 아직 없는 앱은 검사가 "아직 내지 않은 앱"(`not released yet`)으로 넘어간다.
 2. 개발 저장소에서 첫 판을 릴리스하고 GHCR 패키지를 공개로 바꾼다.
-3. 그 판을 이 저장소로 가져온다.
+3. [앱 갱신](#앱-갱신)으로 앱 폴더를 가져온다.
 4. README 짝 파일의 앱 표에 줄을 더한다.
 
 ## 코드 규칙
