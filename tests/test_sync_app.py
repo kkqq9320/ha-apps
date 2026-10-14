@@ -284,6 +284,21 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(rc, 0, err)
         self.assertIn("not released yet: mttl_w01", out)
 
+    def test_fetch_source_never_waits_for_a_password(self):
+        # A missing or private repository makes git ask for credentials; in CI that prompt would hang the job.
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append((cmd, kwargs))
+            return mock.Mock(returncode=0, stderr="")
+
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            m.fetch_source("kkqq9320/ha-lgu-mttl-w01", "v26.10.0", self.tmp / "src")
+        cmd, kwargs = calls[0]
+        self.assertIn("https://github.com/kkqq9320/ha-lgu-mttl-w01.git", cmd)
+        self.assertEqual(kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
+        self.assertIn("PATH", kwargs["env"])
+
     def test_check_command_source_needs_app(self):
         rc, _, err = run_main("--repo", self.repo, "check", "--source", self.src, "--skip-image")
         self.assertEqual(rc, 1)
